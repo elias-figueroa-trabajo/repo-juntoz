@@ -26,7 +26,7 @@ const RAIZ = path.join(__dirname, '..');
 const RECETAS = path.join(RAIZ, 'auto', 'recetas');
 const PAGES = path.resolve(process.env.PAGES_DIR || path.join(RAIZ, 'docs'));
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]{2,79}\/[A-Za-z0-9][A-Za-z0-9_-]{2,79}$/;
-const ESPERA_MAX = 6 * 3600e3;  // red de seguridad: la página deja de dibujar antes (PLAZO_MIN)
+const ESPERA_MAX = 5 * 3600e3;  // red de seguridad: la página deja de dibujar antes (PLAZO_MIN)
 const GRACIA = 48 * 3600e3;     // una pieza retirada se borra del repo recién a las 48 h
 const CI = !!process.env.GITHUB_ACTIONS;
 let PUBLICA = ''; // raíz pública (la dice el servidor: PAGES_URL o el propio repo en Actions)
@@ -40,7 +40,7 @@ const PARTE = Number(opcion('--parte')) || 0;
 const DE = Math.max(1, Number(opcion('--de')) || 1);
 const LIMITE = Number(opcion('--limite')) || 0;
 const PUERTO = Number(opcion('--puerto')) || 5192;
-const PLAZO_MIN = Number(opcion('--plazo')) || 300;
+const PLAZO_MIN = Number(opcion('--plazo')) || 240; // el job de Actions muere a los 330 min: hay que cerrar antes
 
 const dormir = ms => new Promise(r => setTimeout(r, ms));
 const leerJson = (f, def) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return def; } };
@@ -107,7 +107,7 @@ async function dibujar(slug, chrome) {
     const t0 = Date.now();
     while (!fs.existsSync(fin)) {
       if (salio) throw new Error('El navegador se cerró antes de terminar');
-      if (Date.now() - t0 > ESPERA_MAX) throw new Error('Pasaron 6 h sin terminar');
+      if (Date.now() - t0 > ESPERA_MAX) throw new Error(`Pasaron ${ESPERA_MAX / 3600e3} h sin terminar`);
       await dormir(2000);
     }
     await dormir(300); // que termine de escribirse
@@ -174,8 +174,10 @@ async function main() {
 
   const paso = UNIR ? 'Unir' : DE > 1 ? `Parte ${PARTE} de ${DE}` : 'Corrida completa';
   // Log de cambios en la propia URL del feed: historial.json + index.html + portada del repo.
-  // Solo lo escribe quien cierra la corrida (unir, o la corrida completa sin reparto).
-  if (UNIR || DE === 1) {
+  // Solo lo escribe quien cierra la corrida (unir, o la corrida completa sin reparto). OJO con
+  // `DE === 1`: el workflow siempre pasa `--parte`, asi que un feed de una sola parte entraba aqui
+  // al dibujar y anotaba la corrida como exitosa antes de que `unir` escribiera el CSV.
+  if (UNIR || !REPARTIDO) {
     try {
       const paginas = escribirPaginas(PAGES, slug, PUBLICA + '/' + slug + '/feed.csv', process.env.GITHUB_REPOSITORY || '',
         { productos: r.productos, nuevas: r.nuevas, reusadas: r.reusadas, retiradas: r.retiradas, borradas: r.borradas, paso });

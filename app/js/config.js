@@ -1,7 +1,8 @@
 // Configuración de la app. Hoy todo corre en local (app/server.js).
 // Al pasar a Supabase, el proxy será una Edge Function y aquí cambia solo esta línea.
 const PROXY = '/proxy?url=';
-export const proxied = url => url.startsWith('data:') || url.startsWith('blob:') ? url : PROXY + encodeURIComponent(url);
+// Una URL del propio sitio (/demo/x.svg) no pasa por el proxy: el proxy solo acepta dominios de PERMITIDOS y la rechazaba con 403.
+export const proxied = url => url.startsWith('data:') || url.startsWith('blob:') || (url.startsWith('/') && !url.startsWith('//')) ? url : PROXY + encodeURIComponent(url);
 
 // Formatos de salida. `id` va en el nombre del archivo.
 export const FORMATOS = [
@@ -38,4 +39,18 @@ export const MARCAS_INFO = [
 ];
 export const MARCAS = MARCAS_INFO.map(m => m.n);
 // Marca con la que se está trabajando (selector al pie del menú). '' = todas.
-export const marcaActual = () => { try { return localStorage.getItem('efe_marca') || ''; } catch { return ''; } };
+// Marca de trabajo. Se valida contra MARCAS: si quedó guardada una marca retirada, el menú la
+// pinta como «Todas las marcas» pero las pantallas seguirían filtrando por ella y no se vería
+// ninguna campaña ni pedido. El valor vive también en memoria para que, si localStorage falla
+// (incógnito, cuota), lo que se pinta y lo que se filtra no se separen.
+let marcaMem = null;
+export const marcaActual = () => {
+  if (marcaMem === null) { try { marcaMem = localStorage.getItem('efe_marca') || ''; } catch { marcaMem = ''; } }
+  return MARCAS.includes(marcaMem) ? marcaMem : '';
+};
+// Única puerta de escritura: devuelve la marca que realmente quedó puesta.
+export const guardarMarca = m => {
+  marcaMem = MARCAS.includes(m) ? m : '';
+  try { localStorage.setItem('efe_marca', marcaMem); } catch {}
+  return marcaMem;
+};
